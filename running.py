@@ -1,9 +1,10 @@
 from read_gxl import getData
-from grakel.kernels import ShortestPath,WeisfeilerLehman,NeighborhoodHash,NeighborhoodSubgraphPairwiseDistance,WeisfeilerLehmanOptimalAssignment
+import grakel.kernels as gk
 from sklearn.cluster import SpectralClustering
 from scipy.optimize import linear_sum_assignment
 from sklearn import metrics
 import numpy as np
+import sys
 
 def matching(ans,y):
     dic = {1:[],2:[],3:[],4:[],5:[],0:[]}
@@ -23,25 +24,35 @@ def matching(ans,y):
 
     return (cc[linear_sum_assignment(cc,maximize=True)].sum()/len(ans))
 
-datasets = [("ENZYMES"),("AIDS"),("MUTA")]
-kernels = [ShortestPath,WeisfeilerLehman,NeighborhoodHash,NeighborhoodSubgraphPairwiseDistance,WeisfeilerLehmanOptimalAssignment]
+_,dataset,kernel,cluster = sys.argv
 
-clustering = ["kmeans","discretize"]
-res = []
 
-for dataset in datasets:
-    data = getData(dataset)
-    G, y = [x[1] for x in data], [x[2] for x in data]
-    for kernel in kernels:
-        K = kernel(normalize=True).fit_transform(G)
-        K = np.nan_to_num(K)
-        for cluster in clustering:
-            sc = SpectralClustering(len(set(y)), affinity='precomputed', n_init=100,assign_labels=cluster)
+# datasets = [("ENZYMES"),("AIDS"),("MUTA")]
+# kernels = [ShortestPath,WeisfeilerLehman,NeighborhoodHash,NeighborhoodSubgraphPairwiseDistance,WeisfeilerLehmanOptimalAssignment]
+#
+# clustering = ["kmeans","discretize"]
 
-            ans = sc.fit_predict(K)
-            res.append([dataset,str(kernel).split('.')[-1].strip(">'"),cluster,matching(ans,y),
-                        metrics.silhouette_score(K, ans, metric='euclidean'),
-                        metrics.calinski_harabasz_score(K, ans),
-                        metrics.davies_bouldin_score(K, ans)])
+data = getData(dataset)
+G = [x[1] for x in data]
+y = [x[2] for x in data] if dataset != "ZINC" else None
+K = getattr(gk,kernel)(normalize=True).fit_transform(G)
+K = np.nan_to_num(K)
 
-print(res)
+num = len(set(y)) if dataset != "ZINC" else 3
+
+sc = SpectralClustering(num, affinity='precomputed', n_init=100,assign_labels=cluster)
+
+ans = sc.fit_predict(K)
+
+res = [["Dataset","Kernel","Cluster_method","Accuracy","silhouette_score","calinski_harabasz_score","davies_bouldin_score"]]
+
+acc = np.Inf if dataset == "ZINC" else np.round(matching(ans,y),3)
+
+res.append([dataset,str(kernel).split('.')[-1].strip(">'"),cluster,acc,
+            np.round(metrics.silhouette_score(K, ans, metric='euclidean'),3),
+            np.round(metrics.calinski_harabasz_score(K, ans),3),
+            np.round(metrics.davies_bouldin_score(K, ans),3)])
+
+row_format ="{:>20}\t" * (len(res[0]))
+print(row_format.format(*res[0]))
+print(row_format.format(*res[1]))
